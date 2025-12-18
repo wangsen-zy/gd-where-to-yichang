@@ -140,6 +140,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    // Show base map ASAP (center on origin) to avoid "blank map" confusion.
+    if (!origin || !canDrawMap) return;
+    ensureMap(origin).catch((e) => {
+      setErrorMsg(e?.message || '地图加载失败');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [origin, canDrawMap]);
+
   return (
     <div className="page">
       <header className="header">
