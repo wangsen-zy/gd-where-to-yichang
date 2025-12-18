@@ -96,7 +96,7 @@ export default function App() {
       const resp = await recommend({ origin: o, mode, startTime, endTime, mood: mood.trim() });
       setData(resp);
 
-      if (resp.ok && 'result' in resp && resp.result) {
+      if (resp.ok && !resp.empty) {
         const [lngStr, latStr] = resp.result.location.split(',');
         const dest = { lng: Number(lngStr), lat: Number(latStr) };
 
@@ -235,9 +235,9 @@ export default function App() {
           <div className="panelTitle">结果</div>
           {!data ? (
             <div className="empty">点击“随机一个方案”，我就给你一个 3 小时内能闭环的目的地。</div>
-          ) : data.ok && 'empty' in data && data.empty ? (
+          ) : data.ok && data.empty ? (
             <div className="empty">{data.message || '暂时没有找到合适地点'}</div>
-          ) : data.ok && 'result' in data ? (
+          ) : data.ok && !data.empty ? (
             <div className="result">
               <div className="cardTitle">{data.result.name}</div>
               <div className="meta">

@@ -3,12 +3,12 @@ export type TravelMode = 'walk' | 'bike' | 'drive';
 export type RecommendResponse =
   | {
       ok: true;
-      empty?: true;
+      empty: true;
       message?: string;
-      result?: undefined;
     }
   | {
       ok: true;
+      empty?: false;
       city: string;
       input: {
         origin: { lng: number; lat: number };
