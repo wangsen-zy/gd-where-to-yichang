@@ -72,6 +72,23 @@ function suggestedRadiusMeters(mode: Mode, availableMinutes: number): number {
   return clamp(oneWayMin * metersPerMin, 800, 12000);
 }
 
+function metersPerMin(mode: Mode) {
+  return mode === 'walk' ? 85 : mode === 'bike' ? 250 : 550;
+}
+
+function haversineMeters(a: { lng: number; lat: number }, b: { lng: number; lat: number }) {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const x =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+}
+
 async function amapPlaceAround(params: {
   location: string; // "lng,lat"
   keywords: string;
@@ -114,7 +131,7 @@ async function amapDirection(params: {
 
   if (params.mode === 'walk') {
     const url = 'https://restapi.amap.com/v3/direction/walking';
-    const resp = await axios.get(url, { params: baseParams, timeout: 8000 });
+    const resp = await axios.get(url, { params: baseParams, timeout: 4500 });
     return { raw: resp.data, type: 'walk' as const };
   }
 
@@ -122,14 +139,14 @@ async function amapDirection(params: {
     const url = 'https://restapi.amap.com/v3/direction/driving';
     const resp = await axios.get(url, {
       params: { ...baseParams, strategy: 0, extensions: 'base' },
-      timeout: 8000,
+      timeout: 4500,
     });
     return { raw: resp.data, type: 'drive' as const };
   }
 
   // bike
   const url = 'https://restapi.amap.com/v4/direction/bicycling';
-  const resp = await axios.get(url, { params: baseParams, timeout: 8000 });
+  const resp = await axios.get(url, { params: baseParams, timeout: 4500 });
   return { raw: resp.data, type: 'bike' as const };
 }
 
@@ -287,51 +304,30 @@ app.post('/api/recommend', async (req, res) => {
       });
     }
 
-    // Compute travel times and build weighted items.
-    const scored: Array<{
-      poi: (typeof limit)[number];
-      goSec: number;
-      backSec: number;
-      polyline: string;
-      playMin: number;
-      weight: number;
-      reasons: string[];
-    }> = [];
+    // IMPORTANT: avoid too many direction requests (N*2) which causes timeouts.
+    const originPt = { lng: origin.lng, lat: origin.lat };
+    const idealOneWay = clamp(Math.round(safeAvailableMin * 0.2), 10, 30);
+    const mpmin = metersPerMin(mode);
 
-    for (const poi of limit) {
-      const go = extractDurationAndPolyline(await amapDirection({ mode, origin: location, destination: poi.location }));
-      const back = extractDurationAndPolyline(await amapDirection({ mode, origin: poi.location, destination: location }));
-      const goMin = Math.max(1, Math.round(go.durationSec / 60));
-      const backMin = Math.max(1, Math.round(back.durationSec / 60));
-      const travelMin = goMin + backMin;
-      const playMin = safeAvailableMin - travelMin;
+    const rough = limit
+      .map((poi) => {
+        const [dlng, dlat] = poi.location.split(',').map(Number);
+        const dist =
+          typeof poi.distanceMeter === 'number' && poi.distanceMeter > 0
+            ? poi.distanceMeter
+            : haversineMeters(originPt, { lng: dlng, lat: dlat });
+        const oneWayMin = Math.max(1, Math.round(dist / mpmin));
+        const playMinEst = safeAvailableMin - oneWayMin * 2;
+        const closeness = 1 - Math.min(1, Math.abs(oneWayMin - idealOneWay) / idealOneWay);
+        const novelty = 0.7 + Math.random() * 0.6;
+        const weight = (0.6 * closeness + 0.4 * novelty) * 100;
+        return { poi, oneWayMin, playMinEst, weight };
+      })
+      .filter((x) => x.playMinEst >= 20 && x.oneWayMin >= 6)
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 10);
 
-      if (playMin < 20) continue;
-
-      // Prefer moderate travel times (not too close, not too far)
-      const idealOneWay = clamp(Math.round(safeAvailableMin * 0.2), 10, 30);
-      const closeness = 1 - Math.min(1, Math.abs(goMin - idealOneWay) / idealOneWay);
-      const novelty = 0.7 + Math.random() * 0.6;
-
-      const weight = (0.55 * closeness + 0.45 * novelty) * 100;
-      const reasons = [
-        `时间闭环：去${goMin}分 + 玩${playMin}分 + 回${backMin}分`,
-        `交通方式：${modeLabel(mode)}`,
-        mood ? `偏好提示：${mood}` : '随机小确幸',
-      ];
-
-      scored.push({
-        poi,
-        goSec: go.durationSec,
-        backSec: back.durationSec,
-        polyline: go.polyline || '',
-        playMin,
-        weight,
-        reasons,
-      });
-    }
-
-    if (scored.length === 0) {
+    if (rough.length === 0) {
       return res.status(200).json({
         ok: true,
         empty: true,
@@ -339,41 +335,64 @@ app.post('/api/recommend', async (req, res) => {
       });
     }
 
-    const pick = weightedRandom(scored, Math.random);
-    if (!pick) {
-      return res.status(500).json({ error: 'pick_failed' });
-    }
+    const candidates = rough.slice(0, 6);
+    for (let i = 0; i < Math.min(3, candidates.length); i++) {
+      const pick = weightedRandom(candidates.map((c) => ({ ...c, weight: c.weight })), Math.random);
+      const chosen = pick ?? candidates[i];
 
-    const goMin = Math.max(1, Math.round(pick.goSec / 60));
-    const backMin = Math.max(1, Math.round(pick.backSec / 60));
-    const guideLines = await glmLightGuide({
-      poiName: pick.poi.name,
-      category: pick.poi.category,
-      address: pick.poi.address,
-      mode,
-      startTime,
-      endTime,
-      goMin,
-      backMin,
-      playMin: pick.playMin,
-    });
+      const [goRes, backRes] = await Promise.all([
+        amapDirection({ mode, origin: location, destination: chosen.poi.location }),
+        amapDirection({ mode, origin: chosen.poi.location, destination: location }),
+      ]);
+      const go = extractDurationAndPolyline(goRes);
+      const back = extractDurationAndPolyline(backRes);
 
-    return res.json({
-      ok: true,
-      city: '宜昌',
-      input: { origin, mode, startTime, endTime, availableMin: safeAvailableMin },
-      result: {
-        name: pick.poi.name,
-        category: pick.poi.category,
-        address: pick.poi.address,
-        location: pick.poi.location,
+      const goMin = Math.max(1, Math.round(go.durationSec / 60));
+      const backMin = Math.max(1, Math.round(back.durationSec / 60));
+      const playMin = safeAvailableMin - (goMin + backMin);
+      if (playMin < 20) continue;
+
+      const reasons = [
+        `时间闭环：去${goMin}分 + 玩${playMin}分 + 回${backMin}分`,
+        `交通方式：${modeLabel(mode)}`,
+        mood ? `偏好提示：${mood}` : '随机小确幸',
+      ];
+
+      const guideLines = await glmLightGuide({
+        poiName: chosen.poi.name,
+        category: chosen.poi.category,
+        address: chosen.poi.address,
+        mode,
+        startTime,
+        endTime,
         goMin,
         backMin,
-        playMin: pick.playMin,
-        polyline: pick.polyline,
-        reasons: pick.reasons,
-        guide: guideLines,
-      },
+        playMin,
+      });
+
+      return res.json({
+        ok: true,
+        city: scopedCity || '不限城市',
+        input: { origin, mode, startTime, endTime, availableMin: safeAvailableMin },
+        result: {
+          name: chosen.poi.name,
+          category: chosen.poi.category,
+          address: chosen.poi.address,
+          location: chosen.poi.location,
+          goMin,
+          backMin,
+          playMin,
+          polyline: go.polyline,
+          reasons,
+          guide: guideLines,
+        },
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      empty: true,
+      message: '路线规划有点慢（网络波动）。请再点一次“随机一个方案”。',
     });
   } catch (err: any) {
     console.error(err?.response?.data || err);
