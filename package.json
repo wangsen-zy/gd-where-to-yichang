@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "bash -lc 'unset npm_config_prefix; export NVM_DIR=\"$HOME/.nvm\"; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"; nvm use 20 >/dev/null; concurrently -n web,api -c cyan,magenta \"npm run dev:web\" \"npm run dev:api\"'",
     "dev:web": "bash -lc 'unset npm_config_prefix; export NVM_DIR=\"$HOME/.nvm\"; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"; nvm use 20 >/dev/null; vite --host 0.0.0.0'",
