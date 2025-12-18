@@ -3,6 +3,13 @@ import './App.css';
 import { recommend, type RecommendResponse, type TravelMode } from './lib/api';
 import { loadAMap } from './lib/amapLoader';
 
+const PRESETS = {
+  yichangCBD: { name: '宜昌CBD（默认）', lng: 111.286, lat: 30.691 },
+  xilin: { name: '西陵区（预设）', lng: 111.2855, lat: 30.694 },
+  wujiagang: { name: '伍家岗区（预设）', lng: 111.318, lat: 30.668 },
+  dianjun: { name: '点军区（预设）', lng: 111.266, lat: 30.703 },
+} as const;
+
 function nowHHmm() {
   const d = new Date();
   const h = String(d.getHours()).padStart(2, '0');
@@ -30,7 +37,10 @@ export default function App() {
   const [startTime, setStartTime] = useState(() => nowHHmm());
   const [endTime, setEndTime] = useState(() => addMinutesHHmm(nowHHmm(), 180));
   const [mood, setMood] = useState('');
-  const [origin, setOrigin] = useState<{ lng: number; lat: number } | null>(null);
+  const [originMode, setOriginMode] = useState<'preset' | 'geo'>('preset');
+  const [presetKey, setPresetKey] = useState<keyof typeof PRESETS>('yichangCBD');
+  const [cityScope, setCityScope] = useState<'yichang' | 'auto'>('yichang');
+  const [origin, setOrigin] = useState<{ lng: number; lat: number } | null>(() => PRESETS.yichangCBD);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [data, setData] = useState<RecommendResponse | null>(null);
@@ -90,10 +100,24 @@ export default function App() {
     setErrorMsg(null);
     setLoading(true);
     try {
-      const o = origin ?? (await locate());
-      setOrigin(o);
+      let o = origin;
+      if (originMode === 'geo') {
+        o = await locate();
+        setOrigin(o);
+      } else {
+        const p = PRESETS[presetKey];
+        o = { lng: p.lng, lat: p.lat };
+        setOrigin(o);
+      }
 
-      const resp = await recommend({ origin: o, mode, startTime, endTime, mood: mood.trim() });
+      const resp = await recommend({
+        origin: o,
+        mode,
+        startTime,
+        endTime,
+        mood: mood.trim(),
+        city: cityScope === 'yichang' ? '宜昌' : '',
+      });
       setData(resp);
 
       if (resp.ok && !resp.empty) {
@@ -133,12 +157,11 @@ export default function App() {
   }
 
   useEffect(() => {
-    // Best-effort pre-locate; don't block UI.
-    locate()
-      .then((o) => setOrigin(o))
-      .catch(() => {});
+    // Best-effort pre-locate when user chooses "geo".
+    if (originMode !== 'geo') return;
+    locate().then(setOrigin).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [originMode]);
 
   useEffect(() => {
     // Show base map ASAP (center on origin) to avoid "blank map" confusion.
@@ -161,6 +184,26 @@ export default function App() {
       <main className="grid">
         <section className="panel">
           <div className="panelTitle">输入</div>
+
+          <div className="row">
+            <label className="label">范围</label>
+            <div className="seg">
+              <button
+                className={cityScope === 'yichang' ? 'segBtn active' : 'segBtn'}
+                onClick={() => setCityScope('yichang')}
+                type="button"
+              >
+                宜昌
+              </button>
+              <button
+                className={cityScope === 'auto' ? 'segBtn active' : 'segBtn'}
+                onClick={() => setCityScope('auto')}
+                type="button"
+              >
+                不限城市
+              </button>
+            </div>
+          </div>
 
           <div className="row">
             <label className="label">交通方式</label>
@@ -218,17 +261,67 @@ export default function App() {
           <div className="row">
             <label className="label">起点</label>
             <div className="hint">
-              {origin ? (
-                <span className="muted">
-                  已定位：{origin.lng.toFixed(5)}, {origin.lat.toFixed(5)}
-                </span>
-              ) : (
-                <span className="muted">未定位（点击按钮获取）</span>
-              )}
-              <button className="btn ghost" type="button" onClick={() => locate().then(setOrigin).catch((e) => setErrorMsg(e.message))}>
-                获取定位
-              </button>
+              <div className="seg">
+                <button
+                  className={originMode === 'preset' ? 'segBtn active' : 'segBtn'}
+                  onClick={() => {
+                    setOriginMode('preset');
+                    const p = PRESETS[presetKey];
+                    setOrigin({ lng: p.lng, lat: p.lat });
+                  }}
+                  type="button"
+                >
+                  宜昌预设
+                </button>
+                <button
+                  className={originMode === 'geo' ? 'segBtn active' : 'segBtn'}
+                  onClick={() => setOriginMode('geo')}
+                  type="button"
+                >
+                  我的定位
+                </button>
+              </div>
             </div>
+            {originMode === 'preset' ? (
+              <div className="hint">
+                <select
+                  className="text"
+                  value={presetKey}
+                  onChange={(e) => {
+                    const k = e.target.value as keyof typeof PRESETS;
+                    setPresetKey(k);
+                    const p = PRESETS[k];
+                    setOrigin({ lng: p.lng, lat: p.lat });
+                  }}
+                >
+                  {Object.entries(PRESETS).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="muted small">
+                  当前起点：{origin?.lng.toFixed(5)}, {origin?.lat.toFixed(5)}
+                </span>
+              </div>
+            ) : (
+              <div className="hint">
+                {origin ? (
+                  <span className="muted">
+                    已定位：{origin.lng.toFixed(5)}, {origin.lat.toFixed(5)}
+                  </span>
+                ) : (
+                  <span className="muted">未定位（点击按钮获取）</span>
+                )}
+                <button
+                  className="btn ghost"
+                  type="button"
+                  onClick={() => locate().then(setOrigin).catch((e) => setErrorMsg(e.message))}
+                >
+                  获取定位
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="actions">

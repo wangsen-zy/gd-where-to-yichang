@@ -13,6 +13,7 @@ const RecommendSchema = z.object({
   endTime: z.string().min(4), // "HH:mm"
   mood: z.string().optional().default(''),
   categories: z.array(z.string()).optional(),
+  city: z.string().optional().default('宜昌'),
 });
 
 function minutesBetween(startHHmm: string, endHHmm: string): number {
@@ -50,6 +51,7 @@ async function amapPlaceAround(params: {
   radius: number;
   pageSize: number;
   page: number;
+  city?: string;
 }) {
   const url = 'https://restapi.amap.com/v3/place/around';
   const resp = await axios.get(url, {
@@ -61,8 +63,21 @@ async function amapPlaceAround(params: {
       sortrule: 'distance',
       page_size: params.pageSize,
       page: params.page,
-      city: '宜昌',
-      citylimit: true,
+      ...(params.city ? { city: params.city, citylimit: true } : {}),
+      extensions: 'base',
+    },
+    timeout: 8000,
+  });
+  return resp.data as any;
+}
+
+async function amapRegeo(params: { key: string; location: string }) {
+  const url = 'https://restapi.amap.com/v3/geocode/regeo';
+  const resp = await axios.get(url, {
+    params: {
+      key: params.key,
+      location: params.location,
+      radius: 1000,
       extensions: 'base',
     },
     timeout: 8000,
@@ -200,11 +215,15 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { origin, mode, startTime, endTime, mood } = parsed.data;
+    const { origin, mode, startTime, endTime, mood, city } = parsed.data;
     const availableMin = minutesBetween(startTime, endTime);
     const safeAvailableMin = clamp(availableMin, 30, 10 * 60);
 
     const location = `${origin.lng},${origin.lat}`;
+    // If city is provided, scope search to that city (default: 宜昌).
+    // If you want to support "follow my city", you can pass city="" from frontend to disable citylimit.
+    const scopedCity = city?.trim() ? city.trim() : undefined;
+
     const radius = suggestedRadiusMeters(mode, safeAvailableMin);
     const keywords = (parsed.data.categories?.length ? parsed.data.categories : defaultCategoryKeywords()).slice(0, 8);
 
@@ -226,6 +245,7 @@ export default async function handler(req: any, res: any) {
         radius,
         pageSize: 8,
         page: 1,
+        city: scopedCity,
       });
       const pois = Array.isArray(data?.pois) ? data.pois : [];
       for (const p of pois) {

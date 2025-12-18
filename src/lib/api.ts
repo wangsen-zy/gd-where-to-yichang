@@ -37,6 +37,7 @@ export async function recommend(params: {
   startTime: string;
   endTime: string;
   mood?: string;
+  city?: string; // default: 宜昌
 }): Promise<RecommendResponse> {
   const resp = await fetch('/api/recommend', {
     method: 'POST',

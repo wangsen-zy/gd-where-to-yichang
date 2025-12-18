@@ -38,6 +38,7 @@ const RecommendSchema = z.object({
   endTime: z.string().min(4), // "HH:mm"
   mood: z.string().optional().default(''),
   categories: z.array(z.string()).optional(),
+  city: z.string().optional().default('宜昌'),
 });
 
 function minutesBetween(startHHmm: string, endHHmm: string): number {
@@ -77,6 +78,7 @@ async function amapPlaceAround(params: {
   radius: number;
   pageSize: number;
   page: number;
+  city?: string;
 }) {
   if (!AMAP_KEY) throw new Error('Missing AMAP_WEB_SERVICE_KEY');
   const url = 'https://restapi.amap.com/v3/place/around';
@@ -89,8 +91,7 @@ async function amapPlaceAround(params: {
       sortrule: 'distance',
       page_size: params.pageSize,
       page: params.page,
-      city: '宜昌',
-      citylimit: true,
+      ...(params.city ? { city: params.city, citylimit: true } : {}),
       extensions: 'base',
     },
     timeout: 8000,
@@ -223,6 +224,7 @@ app.post('/api/recommend', async (req, res) => {
 
   try {
     const { origin, mode, startTime, endTime, mood } = parsed.data;
+    const scopedCity = parsed.data.city?.trim() ? parsed.data.city.trim() : undefined;
     const availableMin = minutesBetween(startTime, endTime);
     const safeAvailableMin = clamp(availableMin, 30, 10 * 60);
 
@@ -249,6 +251,7 @@ app.post('/api/recommend', async (req, res) => {
         radius,
         pageSize: 8,
         page: 1,
+        city: scopedCity,
       });
       const pois = Array.isArray(data?.pois) ? data.pois : [];
       for (const p of pois) {
