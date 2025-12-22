@@ -25,7 +25,7 @@ VITE_AMAP_SECURITY_JS_CODE=可选_你的_securityJsCode
 PORT=8787
 AMAP_WEB_SERVICE_KEY=你的高德WebService_Key
 ZHIPU_API_KEY=可选_你的智谱APIKey
-ZHIPU_MODEL=glm-4.5-flash
+ZHIPU_MODEL=GLM-4-Flash-250414
 ```
 
 ### 3) 线上部署（Vercel 环境变量）
@@ -36,6 +36,6 @@ ZHIPU_MODEL=glm-4.5-flash
 - `VITE_AMAP_SECURITY_JS_CODE`（可选）
 - `AMAP_WEB_SERVICE_KEY`
 - `ZHIPU_API_KEY`（可选）
-- `ZHIPU_MODEL`（可选，默认 `glm-4.5-flash`）
+- `ZHIPU_MODEL`（可选，默认 `GLM-4-Flash-250414`）
 
 

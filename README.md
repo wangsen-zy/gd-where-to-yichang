@@ -54,3 +54,15 @@ npm run dev
 - `POST /api/recommend`
   - 入参：起点经纬度、交通方式、时间段、可选偏好
   - 出参：目的地 POI + 去/玩/回预算 + 路线 polyline + 轻攻略
+
+- `POST /api/egg`
+  - 入参：时间段 + Top1 POI（前端结果卡触发）
+  - 出参：白天可触发的“碎片时间挑战”故事 + 任务列表
+
+- `POST /api/egg-verify`
+  - 入参：用户当前位置 + 目的地坐标 + 半径
+  - 出参：是否到达（不保存定位，仅计算距离）
+
+### 参赛证据材料
+
+见：`docs/EVIDENCE.md`

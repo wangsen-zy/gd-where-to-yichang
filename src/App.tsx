@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
-import { recommend, type RecommendResponse, type TravelMode } from './lib/api';
+import { getEgg, recommend, verifyEgg, type EggResponse, type EggVerifyResponse, type RecommendResponse, type TravelMode } from './lib/api';
 import { loadAMap } from './lib/amapLoader';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const PRESETS = {
   yichangCBD: { name: '宜昌CBD（默认）', lng: 111.286, lat: 30.691 },
@@ -26,6 +28,14 @@ function addMinutesHHmm(hhmm: string, deltaMin: number) {
   return `${nh}:${nm}`;
 }
 
+function minutesBetween(startHHmm: string, endHHmm: string): number {
+  const [sh, sm] = startHHmm.split(':').map(Number);
+  const [eh, em] = endHHmm.split(':').map(Number);
+  const s = sh * 60 + sm;
+  const e = eh * 60 + em;
+  return e >= s ? e - s : 24 * 60 - s + e;
+}
+
 function modeName(m: TravelMode) {
   if (m === 'walk') return '步行';
   if (m === 'bike') return '骑行';
@@ -41,9 +51,16 @@ export default function App() {
   const [presetKey, setPresetKey] = useState<keyof typeof PRESETS>('yichangCBD');
   const [cityScope, setCityScope] = useState<'yichang' | 'auto'>('yichang');
   const [origin, setOrigin] = useState<{ lng: number; lat: number } | null>(() => PRESETS.yichangCBD);
+  const [minStayMode, setMinStayMode] = useState<'auto' | '15' | '30' | '45' | '60' | '90' | '120' | 'custom'>('auto');
+  const [minStayCustom, setMinStayCustom] = useState('60');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [data, setData] = useState<RecommendResponse | null>(null);
+  const [eggLoading, setEggLoading] = useState(false);
+  const [eggErr, setEggErr] = useState<string | null>(null);
+  const [eggData, setEggData] = useState<EggResponse | null>(null);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<EggVerifyResponse | null>(null);
 
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
@@ -117,8 +134,19 @@ export default function App() {
         endTime,
         mood: mood.trim(),
         city: cityScope === 'yichang' ? '宜昌' : '',
+        allowRelax: true,
+        minStayMin:
+          minStayMode === 'auto'
+            ? undefined
+            : Math.max(
+                0,
+                Number(minStayMode === 'custom' ? minStayCustom : minStayMode) || 0
+              ),
       });
       setData(resp);
+      setEggErr(null);
+      setEggData(null);
+      setVerifyResult(null);
 
       if (resp.ok && !resp.empty) {
         const [lngStr, latStr] = resp.result.location.split(',');
@@ -153,6 +181,53 @@ export default function App() {
       setErrorMsg(e?.message || '发生错误');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onEgg() {
+    if (!data || !data.ok || data.empty) return;
+    setEggErr(null);
+    setEggLoading(true);
+    setVerifyResult(null);
+    try {
+      const resp = await getEgg({
+        mode,
+        startTime,
+        endTime,
+        mood: mood.trim(),
+        city: cityScope === 'yichang' ? '宜昌' : '',
+        poi: {
+          name: data.result.name,
+          category: data.result.category,
+          address: data.result.address,
+          location: data.result.location,
+        },
+        playMin: data.result.playMin,
+      });
+      setEggData(resp);
+    } catch (e: any) {
+      setEggErr(e?.message || '彩蛋获取失败');
+    } finally {
+      setEggLoading(false);
+    }
+  }
+
+  async function onVerifyEgg() {
+    if (!eggData || !('eligible' in eggData) || eggData.eligible !== true) return;
+    setVerifyLoading(true);
+    setEggErr(null);
+    try {
+      const user = await locate();
+      const resp = await verifyEgg({
+        user,
+        destLocation: eggData.egg.verify.destLocation,
+        radiusMeter: eggData.egg.verify.radiusMeter,
+      });
+      setVerifyResult(resp);
+    } catch (e: any) {
+      setEggErr(e?.message || '到达校验失败');
+    } finally {
+      setVerifyLoading(false);
     }
   }
 
@@ -227,6 +302,32 @@ export default function App() {
               <input className="time" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
               <span className="to">→</span>
               <input className="time" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </div>
+            <span className="muted small">可用时长：{minutesBetween(startTime, endTime)} 分钟</span>
+          </div>
+
+          <div className="row">
+            <label className="label">最短停留（自动可放宽）</label>
+            <div className="timeRow">
+              <select className="text" value={minStayMode} onChange={(e) => setMinStayMode(e.target.value as any)}>
+                <option value="auto">自动（按意图）</option>
+                <option value="15">15 分钟</option>
+                <option value="30">30 分钟</option>
+                <option value="45">45 分钟</option>
+                <option value="60">60 分钟</option>
+                <option value="90">90 分钟</option>
+                <option value="120">120 分钟</option>
+                <option value="custom">自定义…</option>
+              </select>
+              {minStayMode === 'custom' ? (
+                <input
+                  className="time"
+                  inputMode="numeric"
+                  placeholder="分钟"
+                  value={minStayCustom}
+                  onChange={(e) => setMinStayCustom(e.target.value)}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -336,7 +437,7 @@ export default function App() {
         <section className="panel">
           <div className="panelTitle">结果</div>
           {!data ? (
-            <div className="empty">点击“随机一个方案”，我就给你一个 3 小时内能闭环的目的地。</div>
+            <div className="empty">点击“随机一个方案”，我就给你一个能在你选择的时间段内往返闭环的目的地。</div>
           ) : data.ok && data.empty ? (
             <div className="empty">{data.message || '暂时没有找到合适地点'}</div>
           ) : data.ok && !data.empty ? (
@@ -379,6 +480,39 @@ export default function App() {
                 </ul>
               </div>
 
+              {data.relaxNotes?.length ? (
+                <div className="block">
+                  <div className="blockTitle">放宽说明（为保证有结果）</div>
+                  <ul className="list">
+                    {data.relaxNotes.map((x) => (
+                      <li key={x}>{x}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {data.candidates?.length ? (
+                <div className="block">
+                  <div className="blockTitle">Top3 候选（估算）</div>
+                  <ul className="list">
+                    {data.candidates.map((c, idx) => (
+                      <li key={c.location}>
+                        <b>{idx + 1}. {c.name}</b>（{c.category}） · 预估单程 {c.oneWayMinEst ?? '-'} 分 · 预估可停留 {c.playMinEst ?? '-'} 分
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {data.reportMarkdown ? (
+                <div className="block">
+                  <div className="blockTitle">图文报告</div>
+                  <div className="md">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.reportMarkdown}</ReactMarkdown>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="actions">
                 <a
                   className="btn"
@@ -390,10 +524,55 @@ export default function App() {
                 >
                   用高德打开/导航
                 </a>
+                <button className="btn" type="button" onClick={onEgg} disabled={eggLoading}>
+                  {eggLoading ? '彩蛋生成中…' : '开启彩蛋'}
+                </button>
                 <button className="btn ghost" type="button" onClick={onRecommend} disabled={loading}>
                   再随机一次
                 </button>
               </div>
+
+              {eggErr ? <div className="error">{eggErr}</div> : null}
+
+              {eggData?.ok && eggData.eligible === false ? (
+                <div className="eggBox">
+                  <div className="eggTitle">彩蛋未开启</div>
+                  <div className="eggStory">{eggData.message}</div>
+                </div>
+              ) : null}
+
+              {eggData?.ok && eggData.eligible === true ? (
+                <div className="eggBox">
+                  <div className="eggTitle">{eggData.egg.title}</div>
+                  <div className="eggStory">{eggData.egg.story}</div>
+                  <div className="eggSub">挑战任务（到达即可）</div>
+                  <ul className="list">
+                    {eggData.egg.tasks.map((t) => (
+                      <li key={t}>{t}</li>
+                    ))}
+                  </ul>
+                  <div className="eggSub">安全提示</div>
+                  <div className="eggBadges">
+                    {eggData.egg.safety.map((s) => (
+                      <span key={s} className="eggBadge">{s}</span>
+                    ))}
+                  </div>
+                  <div className="actions eggActions">
+                    <button className="btn primary" type="button" onClick={onVerifyEgg} disabled={verifyLoading}>
+                      {verifyLoading ? '定位校验中…' : '我已到达（解锁）'}
+                    </button>
+                    {verifyResult ? (
+                      <span className="muted small">
+                        {verifyResult.reached
+                          ? `已解锁：你在范围内（≤${verifyResult.radiusMeter}m）`
+                          : `还差 ${verifyResult.distanceMeter}m（范围 ≤${verifyResult.radiusMeter}m）`}
+                      </span>
+                    ) : (
+                      <span className="muted small">不会保存你的定位，仅做本次距离计算</span>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="empty">结果解析失败</div>
