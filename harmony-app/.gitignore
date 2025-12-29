@@ -1,0 +1,33 @@
+# Build output
+/build
+/entry/build
+/.preview
+
+# IDE
+/.idea
+*.iml
+
+# Node modules
+/node_modules
+/oh_modules
+/entry/node_modules
+/entry/oh_modules
+
+# Cache
+.cxx
+.hvigor
+.arkui-x
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Signing
+*.p12
+*.cer
+*.pem
+
+# HAP/APP output (keep for reference, but don't commit large binaries)
+# *.hap
+# *.app
+

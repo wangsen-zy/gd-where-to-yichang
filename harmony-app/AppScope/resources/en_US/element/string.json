@@ -1,0 +1,13 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "Gaode Where To"
+    },
+    {
+      "name": "app_description",
+      "value": "AI-powered smart travel recommendation app based on Gaode Maps"
+    }
+  ]
+}
+

@@ -1,0 +1,25 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Gaode Where To - Application Module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Gaode Where To - Main Entry"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Gaode Where To"
+    },
+    {
+      "name": "internet_permission_reason",
+      "value": "Internet access is required to load map data and AI recommendation services"
+    },
+    {
+      "name": "network_info_permission_reason",
+      "value": "Network status is required to optimize app experience"
+    }
+  ]
+}
+

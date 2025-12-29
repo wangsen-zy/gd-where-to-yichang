@@ -1,0 +1,13 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "高德去哪儿"
+    },
+    {
+      "name": "app_description",
+      "value": "基于高德地图AI的智能出行推荐应用，输入您的需求，为您推荐最佳出行目的地"
+    }
+  ]
+}
+

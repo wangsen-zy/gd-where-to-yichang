@@ -1,0 +1,25 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "高德去哪儿应用模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "高德去哪儿主入口"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "高德去哪儿"
+    },
+    {
+      "name": "internet_permission_reason",
+      "value": "需要访问网络以加载地图数据和AI推荐服务"
+    },
+    {
+      "name": "network_info_permission_reason",
+      "value": "需要获取网络状态以优化应用体验"
+    }
+  ]
+}
+
